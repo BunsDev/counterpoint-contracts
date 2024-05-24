@@ -1,0 +1,15 @@
+ {
+ "homeMobileCountryCode": 334,
+  "homeMobileNetworkCode": 20,
+  "radioType": "lte",
+  "cellTowers": [
+       {
+      "cellId": 52425731,
+      "locationAreaCode": 25309,
+      "mobileCountryCode": 334,
+      "mobileNetworkCode": 20,
+      "signalStrength": -114
+    }
+
+  ]
+ }
