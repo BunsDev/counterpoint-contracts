@@ -3,40 +3,25 @@ pragma solidity ^0.8.19;
 import {FunctionsClient} from "@chainlink/contracts/src/v0.8/functions/v1_0_0/FunctionsClient.sol";
 import {FunctionsRequest} from "@chainlink/contracts/src/v0.8/functions/v1_0_0/libraries/FunctionsRequest.sol";
 
-import "hardhat/console.sol";
-
 /// ERRORS
 error ValueLessThanFee(uint256 fee, uint256 value);
 error HashAlreadySaved(bytes32 metahash);
 error UnexpectedRequestID(bytes32 requestId);
-error RequestStillInProgress(address user, bytes32 requestId);
 
-contract Authentichain is FunctionsClient {
+contract Counterpoint is FunctionsClient {
     using FunctionsRequest for FunctionsRequest.Request;
     uint256 public fee;
     address payable public owner;
     mapping(bytes32 => bytes32) public metaHashToDataHash;
     mapping(bytes32 => Metadata) public metaHashToMetadata;
     mapping(address => bytes32) public userLastRequestId;
-    mapping(address => bool) userRequestInProgress;
+
     address router = 0xC22a79eBA640940ABB6dF0f7982cc119578E11De;
-
-    //Callback gas limit
-    uint32 gasLimit = 300000;
-
-    // donID - Hardcoded for Sepolia
-    // Check to get the donID for your supported network https://docs.chain.link/chainlink-functions/supported-networks
-    bytes32 donID =
-        0x66756e2d706f6c79676f6e2d616d6f792d310000000000000000000000000000;
 
     struct Metadata {
         string gpsLongitude;
         string gpsLatitude;
-        string gpsLongitudeRef;
-        string gpsLatitudeRef;
         uint256 timestamp;
-        uint256 size;
-        string format;
     }
 
     event Withdrawal(uint amount, uint when);
@@ -55,13 +40,28 @@ contract Authentichain is FunctionsClient {
      * @return requestId The ID of the request
      */
     function sendRequest(
-        string calldata source,
+        string memory source,
+        bytes memory encryptedSecretsUrls,
+        uint8 donHostedSecretsSlotID,
+        uint64 donHostedSecretsVersion,
+        string[] memory args,
+        bytes[] memory bytesArgs,
         uint64 subscriptionId,
-        string[] calldata args
+        uint32 gasLimit,
+        bytes32 donID
     ) external returns (bytes32 requestId) {
         FunctionsRequest.Request memory req;
-        req.initializeRequestForInlineJavaScript(source); // Initialize the request with JS code
-        if (args.length > 0) req.setArgs(args); // Set the arguments for the request
+        req.initializeRequestForInlineJavaScript(source);
+        if (encryptedSecretsUrls.length > 0)
+            req.addSecretsReference(encryptedSecretsUrls);
+        else if (donHostedSecretsVersion > 0) {
+            req.addDONHostedSecrets(
+                donHostedSecretsSlotID,
+                donHostedSecretsVersion
+            );
+        }
+        if (args.length > 0) req.setArgs(args);
+        if (bytesArgs.length > 0) req.setBytesArgs(bytesArgs);
 
         // Send the request and store the request ID
         userLastRequestId[msg.sender] = _sendRequest(
@@ -70,7 +70,6 @@ contract Authentichain is FunctionsClient {
             gasLimit,
             donID
         );
-        userRequestInProgress[msg.sender] = true;
 
         return userLastRequestId[msg.sender];
     }
@@ -88,8 +87,14 @@ contract Authentichain is FunctionsClient {
     ) internal override {
         // Emit an event to log the response
         emit Response(requestId, response, err);
-        userRequestInProgress[msg.sender] = false;
     }
+
+    /**
+     * @notice Saves a hash of a video or image file using the metadata as a key
+     * @param metadata the file metadata
+     * @param data the stringified file data
+     * @param requestId the request Id of the functions request
+     */
 
     function saveHash(
         Metadata calldata metadata,
@@ -99,9 +104,7 @@ contract Authentichain is FunctionsClient {
         if (userLastRequestId[msg.sender] != requestId) {
             revert UnexpectedRequestID(requestId); // Check if request IDs match
         }
-        if (userRequestInProgress[msg.sender] == true) {
-            revert RequestStillInProgress(msg.sender, requestId);
-        }
+
         if (msg.value < fee) {
             revert ValueLessThanFee(fee, msg.value);
         }
@@ -117,11 +120,17 @@ contract Authentichain is FunctionsClient {
         emit HashSaved(msg.sender, metadata);
     }
 
+    /**
+     * @notice Determines if the content of a video or image file has been altered by comparing the data hashes
+     * @param metadata the file metadata used as a key
+     * @param data the stringified file data
+     */
+
     function authenticate(
-        Metadata calldata metaData,
+        Metadata calldata metadata,
         string calldata data
     ) external view returns (bool) {
-        bytes32 metaHash = keccak256(abi.encode(metaData));
+        bytes32 metaHash = keccak256(abi.encode(metadata));
         if (keccak256(abi.encode(data)) == metaHashToDataHash[metaHash]) {
             return true;
         } else {

@@ -8,13 +8,11 @@ const metaDataCoordinates = JSON.parse(args[2]);
  * @property {number} lng
  */
 
- console.log("gps", gpsCoordinates)
- console.log("gps", gpsCoordinates.lat)
+
 function haversineDistance(coord1, coord2) {
     const R = 6371000; // Radius of the Earth in meters
     const toRadians = degrees => degrees * (Math.PI / 180);
-    console.log("cord2", coord2.lat )
-    console.log("cord1", coord1.lat )
+   
 
     const lat1 = toRadians(coord1.lat);
     const lng1 = toRadians(coord1.lng);
@@ -30,7 +28,7 @@ function haversineDistance(coord1, coord2) {
               Math.sin(dLng / 2) * Math.sin(dLng / 2);
 
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    console.log("distance", R * c)
+    
     return R * c; // Distance in meters
 }
 
@@ -43,26 +41,26 @@ function haversineDistance(coord1, coord2) {
  */
 function isWithinRadius(center, point, radius) {
     const distance = haversineDistance(center, point);
-    console.log("dist", distance)
+  
     return distance <= radius;
 }
 
 
 
-if (!secrets.key) {
+if (!secrets.MAPS_API) {
   throw Error(
     "GOOGLE_API_KEY environment variable not set for Google API"
   );
 }
 
 const apiResponse = await Functions.makeHttpRequest({
-  url: `https://www.googleapis.com/geolocation/v1/geolocate?key=${secrets.key}`,
+  url: `https://www.googleapis.com/geolocation/v1/geolocate?key=${secrets.MAPS_API}`,
   method: "POST",
   data: body
   
 });
 if (apiResponse.error) {
-  throw Error("Request failed");
+  throw Error("Request failed", apiResponse.error);
 }
 
 const  data  = apiResponse.data;
@@ -71,7 +69,7 @@ const cellCoordinates = {lat: data.location.lat, lng: data.location.lng};
 
 
 if (isWithinRadius(cellCoordinates, gpsCoordinates, data.accuracy) && isWithinRadius(cellCoordinates, metaDataCoordinates, data.accuracy) ) {
-    return Functions.encodeUint256(0);
+    return Functions.encodeUint256(0); //true
 } else {
-   return Functions.encodeUint256(1);
+   return Functions.encodeUint256(1); //false
 }
